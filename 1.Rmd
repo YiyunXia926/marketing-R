@@ -1,0 +1,101 @@
+---
+title: "Untitled"
+output: html_document
+date: "2025-02-13"
+---
+setwd("C:/Users/a1669/Desktop/Rworks")
+
+# 安装和加载必要的R包
+install.packages(c("tidyverse", "cluster", "factoextra", "ggplot2", "dplyr", "readxl", "NbClust"))
+# 加载必要的 R 包
+library(tidyverse)
+library(cluster)
+library(factoextra)
+library(ggplot2)
+library(dplyr)
+library(readxl)
+library(NbClust)
+
+# 读取数据
+data <- read_excel("SmartWatch Data File.xlsx")
+
+# 仅选择数值型列
+data <- data %>% select(where(is.numeric))
+
+# 标准化数据
+dfz <- scale(data)
+
+# 计算欧几里得距离
+distance <- dist(dfz, method = 'euclidean')
+
+# 层次聚类
+hc.w <- hclust(distance, method = 'ward.D')
+
+# 绘制聚类树状图
+plot(hc.w, main = "Cluster Dendrogram", xlab = "Observations", ylab = "Height")
+
+# Elbow 方法确定聚类数
+x <- c(1:10)
+sort_height <- sort(hc.w$height, decreasing = TRUE)
+y <- sort_height[1:10]
+plot(x, y, type = "b", main = "Elbow Plot", xlab = "Number of Clusters", ylab = "Height")
+lines(x, y, col = "blue")
+
+# 选择 4 类
+rect.hclust(hc.w, k = 4, border = 2:5)
+
+# 计算 4 个类
+cluster <- cutree(hc.w, k = 4)
+table(cluster)
+
+# 绑定聚类结果
+data_final <- cbind(data, cluster)
+
+# 确保数据为 data.frame
+data_final <- as.data.frame(data_final)
+
+# 确保 cluster 为因子
+data_final$cluster <- as.factor(data_final$cluster)
+
+# 计算每个簇的均值
+segments <- data_final %>% 
+  group_by(cluster) %>% 
+  summarise(across(where(is.numeric), mean, .names = "{col}_mean"))
+
+# 显示聚类特征
+print(segments)
+
+# ANOVA 检验
+anova_results <- data.frame(Variable = character(), P_Value = numeric())
+
+# 变量列表
+variables <- c("TimelyInf", "TaskMgm", "DeviceSt", "Wellness", "Athlete", "Style")
+
+for (var in variables) {
+  if (var %in% colnames(data_final)) {
+    anova_model <- aov(data_final[[var]] ~ factor(data_final$cluster))
+    p_value <- summary(anova_model)[[1]][["Pr(>F)"]][1]
+    anova_results <- rbind(anova_results, data.frame(Variable = var, P_Value = p_value))
+  }
+}
+
+# 输出 ANOVA 结果
+print(anova_results)
+
+# 绘制箱线图
+for (var in variables) {
+  if (var %in% colnames(data_final)) {
+    p <- ggplot(data_final, aes(x = factor(cluster), y = .data[[var]], fill = factor(cluster))) +
+      geom_boxplot() +
+      labs(title = paste("Distribution of", var, "by Segment"),
+           x = "Segment",
+           y = var) +
+      theme_minimal() +
+      theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 14)) +
+      scale_fill_brewer(palette = "Set1")  # 颜色方案调整
+    print(p)
+  }
+}
+
+
+
